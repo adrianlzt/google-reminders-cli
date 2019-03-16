@@ -1,18 +1,21 @@
 import argparse
 import json
 import os
+import sys
 import readline  # to enable navigating through entered text
 import time
+from datetime import datetime
 from typing import Tuple
 
-import dateparser
 import httplib2
 from oauth2client import tools
 from oauth2client.client import OAuth2WebServerFlow
 from oauth2client.file import Storage
+from parsedatetime.parsedatetime import Calendar
 
-APP_KEYS_FILE = 'app_keys.json'
-USER_OAUTH_DATA_FILE = os.path.expanduser('~/.google-reminders-cli-oauth')
+
+APP_KEYS_FILE = os.path.expanduser('~/.config/google-reminders/app_keys.json')
+USER_OAUTH_DATA_FILE = os.path.expanduser('~/.config/google-reminders/google-reminders-cli-oauth')
 
 HTTP_OK = 200
 WEEKDAYS = {
@@ -24,7 +27,6 @@ WEEKDAYS = {
     5: 'Saturday',
     6: 'Sunday',
 }
-
 
 def authenticate() -> httplib2.Http:
     """
@@ -113,21 +115,33 @@ def read_reminder_params():
     """
     :return: (headers, data), or None (meaning to action required)
     """
-    title = input('What\'s the reminder: ')
-    date_str = input('When do you want to be reminded: ')
-    dt = dateparser.parse(date_str)
+    dt = None
+
+    # Direct input using arguments or asking the user
+    if len(sys.argv) > 1:
+        user_input = " ".join(sys.argv[1:])
+        res = Calendar().nlp(user_input)
+        if res:
+            dt, flags, start_pos, end_post, matched_text = res[0]
+    else:
+        user_input = input('What\'s the reminder: ')
+
     if dt is None:
-        print('Unrecognizable time text')
-        return
+        date_str = input('When do you want to be reminded: ')
+        dt,r = Calendar().parseDT(date_str)
+        if r == 0:
+            print('Unrecognizable time text')
+            return
+
     weekday = WEEKDAYS[dt.weekday()]
 
     print(
-        f'\n"{title}" on {weekday}, {dt.year}-{dt.month}-{dt.day} '
+        f'\n"{user_input}" on {weekday}, {str(dt.day).zfill(2)}/{str(dt.month).zfill(2)}/{dt.year} '
         f'at {str(dt.hour).zfill(2)}:{str(dt.minute).zfill(2)}\n'
     )
     save = read_yes_no('Do you want to save this?')
     if save:
-        return build_request_params(title, dt.year, dt.month, dt.day, dt.hour, dt.minute)
+        return build_request_params(user_input, dt.year, dt.month, dt.day, dt.hour, dt.minute)
 
 
 usage = '''
@@ -158,7 +172,7 @@ def parse_args():
 
 
 def main():
-    parse_args()  # handles the help menu
+    #parse_args()  # handles the help menu
     auth_http = authenticate()
     params = read_reminder_params()
     if params:
